@@ -1,5 +1,6 @@
 require 'open-uri'
 require 'nokogiri'
+require 'CSV'
 
 class Game
   attr_accessor :name, 
@@ -7,7 +8,6 @@ class Game
     :minplayers, 
     :maxplayers, 
     :recommended, 
-    :best, 
     :avgweight,
     :playingtime
 
@@ -18,8 +18,7 @@ class Game
     @maxplayers = info['maxplayers']
     @avgweight = info['avgweight']
     @playingtime = info['playingtime']
-    @recommended = info['suggested']['recommended']
-    @best = info['suggested']['best']
+    @recommended = info['recommended']
   end
 end
 
@@ -27,25 +26,20 @@ def numeric_only?(str)
   !str.match("[^0-9]")
 end
 
-def suggested_count(poll_result, keyword)
-  counts = []
-  for result in poll_result
+def suggested_players(item)
+  poll_results = item.xpath("poll[@name='suggested_numplayers']/results")
+  recommended_counts = []
+  for result in poll_results
     count = result.attr("numplayers")
     if numeric_only?(count)
-      recommended = result.xpath("result[@value='#{keyword}']").attr('numvotes').value
-      if recommended.to_i > 0
-        counts << count
+      recommended = result.xpath("result[@value='Recommended']").attr('numvotes').value
+      not_recommended = result.xpath("result[@value='Not Recommended']").attr('numvotes').value
+      if recommended.to_i > 0 && recommended.to_i > not_recommended.to_i
+        recommended_counts << count
       end
     end
   end
-  return counts.join(",")
-end
-
-def suggested_players(item)
-  suggested_players = item.xpath("poll[@name='suggested_numplayers']/results")
-  recommended = suggested_count(suggested_players, "Recommended")
-  best = suggested_count(suggested_players, "Best")
-  return {"recommended" => recommended, "best" => best}
+  return recommended_counts.join(",")
 end
 
 def get_game(id)
@@ -56,13 +50,13 @@ def get_game(id)
     'maxplayers' => item.xpath("maxplayers").attr("value").value,
     'playingtime' => item.xpath("playingtime").attr("value").value,
     'avgweight' => item.xpath("statistics/ratings/averageweight").attr('value').value,
-    'suggested' => suggested_players(item)
+    'recommended' => suggested_players(item)
   }
 end
 
 def get_ranked_games(page)
-  # doc = Nokogiri::HTML(open("http://boardgamegeek.com/search/boardgame/page/#{page}?sort=rank&advsearch=1"))
-  doc = Nokogiri::HTML(File.open('page1.html'))
+  doc = Nokogiri::HTML(open("http://boardgamegeek.com/search/boardgame/page/#{page}?sort=rank&advsearch=1"))
+  # doc = Nokogiri::HTML(File.open('page1.html'))
   links = doc.css('td.collection_objectname a')
   games = []
   for link in links
@@ -70,14 +64,38 @@ def get_ranked_games(page)
     id = link['href'].match('/boardgame/([0-9]+)/')[1]
     info = get_game(id)
     game = Game.new(name, id, info)
-    puts "#{game.name}: #{game.id}, #{game.playingtime} min, #{game.minplayers}-#{game.maxplayers} players, rec w #{game.recommended}, best w #{game.best}, #{game.avgweight} weight"
+    puts "#{game.name}: #{game.id}, #{game.playingtime}m, #{game.minplayers}-#{game.maxplayers}, r #{game.recommended}, #{game.avgweight} w"
     games << game
   end
   return games
 end
 
 games = []
-games = get_ranked_games(1)
+# games = get_ranked_games(1)
+
+for x in 1..5
+  games << get_ranked_games(x)
+  games.flatten!
+end
+
+def get_weight(num)
+  if num < 2
+    return "light"
+  elsif num < 3
+    return "medium"
+  else
+    return "heavy"
+  end
+end
+
+CSV.open('output.csv', 'wb') do |csv|
+  csv << ["name","weight","minplayers","maxplayers","playingtime","recplayers"]
+  for game in games
+    weight = get_weight(game.avgweight.to_f)
+    csv << [game.name, weight, game.minplayers, game.maxplayers, game.playingtime, game.recommended]
+  end
+end
+
 # for x in 1..5
 #   games << get_ranked_games(x)
 #   games.flatten!
