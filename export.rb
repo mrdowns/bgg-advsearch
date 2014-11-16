@@ -1,5 +1,6 @@
 require 'open-uri'
 require 'nokogiri'
+require 'uri'
 require 'CSV'
 
 class Game
@@ -95,12 +96,3 @@ CSV.open('output.csv', 'wb') do |csv|
     csv << [game.name, weight, game.minplayers, game.maxplayers, game.playingtime, game.recommended]
   end
 end
-
-# for x in 1..5
-#   games << get_ranked_games(x)
-#   games.flatten!
-# end
-
-# for game in games
-#   puts "#{game.name}: #{game.id}, #{game.minplayers}-#{game.maxplayers}, #{game.recommend} #{game.best} #{game.avgweight}"
-# end
